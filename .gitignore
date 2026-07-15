@@ -1,0 +1,28 @@
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.production
+.env.development
+.env.*
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Strapi
+backend/.tmp/
+backend/build/
+backend/.strapi/
+backend/exports/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
