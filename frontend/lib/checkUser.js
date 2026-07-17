@@ -5,6 +5,7 @@ const STRAPI_URL =
 const STRAPI_API_TOKEN = process.env.STRAPI_API_TOKEN;
 
 export const checkUser = async () => {
+  const { has } = await auth();
   const user = await currentUser();
 
   if (!user) {
@@ -16,6 +17,8 @@ export const checkUser = async () => {
     console.error("❌ STRAPI_API_TOKEN is missing in .env.local");
     return null;
   }
+
+  const clerkSubscriptionTier = has({ plan: "pro" }) ? "pro" : "free";
 
   try {
     // Check if user exists in Strapi
@@ -43,6 +46,29 @@ export const checkUser = async () => {
 
     if (existingUserData.length > 0) {
       const existingUser = existingUserData[0];
+      
+      // If the subscription tier in Strapi doesn't match the Clerk subscription tier, sync it to Strapi
+      if (existingUser.subscriptionTier !== clerkSubscriptionTier) {
+        console.log(`🔄 Syncing subscription tier to Strapi: ${clerkSubscriptionTier}`);
+        const updateResponse = await fetch(`${STRAPI_URL}/api/users/${existingUser.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${STRAPI_API_TOKEN}`,
+          },
+          body: JSON.stringify({
+            subscriptionTier: clerkSubscriptionTier,
+          }),
+        });
+
+        if (updateResponse.ok) {
+          existingUser.subscriptionTier = clerkSubscriptionTier;
+          console.log("✅ Successfully synced subscription tier to Strapi!");
+        } else {
+          console.error("❌ Failed to sync subscription tier to Strapi:", await updateResponse.text());
+        }
+      }
+
       // Use subscription tier from Strapi (source of truth)
       return { ...existingUser, subscriptionTier: existingUser.subscriptionTier || "free" };
     }
@@ -84,7 +110,7 @@ export const checkUser = async () => {
       firstName: user.firstName || "",
       lastName: user.lastName || "",
       imageUrl: user.imageUrl || "",
-      subscriptionTier: "free",
+      subscriptionTier: clerkSubscriptionTier,
     };
 
     const newUserResponse = await fetch(`${STRAPI_URL}/api/users`, {
