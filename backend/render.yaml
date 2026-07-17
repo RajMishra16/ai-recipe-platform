@@ -3,6 +3,7 @@ services:
     name: ai-recipe-strapi
     runtime: node
     plan: free
+    rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm run start
     healthCheckPath: /_health
