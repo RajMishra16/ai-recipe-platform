@@ -13,6 +13,23 @@ const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+// Retry wrapper for Gemini 503 overload errors
+async function withRetry(fn, retries = 3, delayMs = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('high demand');
+      if (is503 && i < retries - 1) {
+        console.log(`⏳ Gemini 503 - retrying in ${delayMs}ms (attempt ${i + 2}/${retries})...`);
+        await new Promise(r => setTimeout(r, delayMs * (i + 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 // Helper function to normalize recipe title
 function normalizeTitle(title) {
   return title
@@ -133,7 +150,7 @@ export async function getOrGenerateRecipe(formData) {
     // Step 2: Recipe doesn't exist, generate with Gemini
     console.log("🤖 Recipe not found, generating with Gemini...");
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const prompt = `
 You are a professional chef and recipe expert. Generate a detailed recipe for: "${normalizedTitle}"
@@ -204,7 +221,7 @@ Guidelines:
 - Keep total instructions under 12 steps
 `;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     const text = response.text();
 
@@ -533,7 +550,7 @@ export async function getRecipesByPantryIngredients() {
 
     console.log("🥘 Finding recipes for ingredients:", ingredients);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const prompt = `
 You are a professional chef. Given these available ingredients: ${ingredients}
@@ -562,7 +579,7 @@ Rules:
 - Make recipes realistic and delicious
 `;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     const text = response.text();
 

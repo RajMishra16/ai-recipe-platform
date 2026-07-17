@@ -12,6 +12,23 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+// Retry wrapper for Gemini 503 overload errors
+async function withRetry(fn, retries = 3, delayMs = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('high demand');
+      if (is503 && i < retries - 1) {
+        console.log(`⏳ Gemini 503 - retrying in ${delayMs}ms (attempt ${i + 2}/${retries})...`);
+        await new Promise(r => setTimeout(r, delayMs * (i + 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 // Scan image with Gemini Vision
 export async function scanPantryImage(formData) {
   try {
@@ -58,7 +75,7 @@ export async function scanPantryImage(formData) {
     const base64Image = buffer.toString("base64");
 
     // Call Gemini Vision API
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const prompt = `
 You are a professional chef and ingredient recognition expert. Analyze this image of a pantry/fridge and identify all visible food ingredients.
@@ -81,7 +98,7 @@ Rules:
 - Common pantry staples are acceptable (salt, pepper, oil)
 `;
 
-    const result = await model.generateContent([
+    const result = await withRetry(() => model.generateContent([
       prompt,
       {
         inlineData: {
@@ -89,7 +106,7 @@ Rules:
           data: base64Image,
         },
       },
-    ]);
+    ]));
 
     const response = await result.response;
     const text = response.text();
